@@ -1,0 +1,16 @@
+node_modules
+/.cache
+/build
+/dist
+/public/build
+/.mf
+.env
+.shopify
+.react-router
+hydrogen-storefront/node_modules
+hydrogen-storefront/.cache
+hydrogen-storefront/build
+hydrogen-storefront/dist
+hydrogen-storefront/.mf
+hydrogen-storefront/.shopify
+hydrogen-storefront/.react-router

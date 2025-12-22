@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {COLORS, CAMERA_CONFIG, PERFORMANCE} from '../constants';
+import {isMobile} from './Performance';
 
 /**
  * Scene Setup Utilities
@@ -49,20 +50,31 @@ export function createCamera(sizes: {width: number; height: number}, isMobile = 
  * @param sizes - Object met width en height van de container
  * @returns Object met renderer en pixelRatio
  */
-export function createRenderer(sizes: {width: number; height: number}) {
-  const pixelRatio = Math.min(window.devicePixelRatio, PERFORMANCE.maxPixelRatio);
+export function createRenderer(sizes: {width: number; height: number}, isMobile = false) {
+  const maxPixelRatio = isMobile ? PERFORMANCE.mobile.maxPixelRatio : PERFORMANCE.maxPixelRatio;
+  const pixelRatio = Math.min(window.devicePixelRatio, maxPixelRatio);
   
   const renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    powerPreference: 'high-performance', // Force dedicated GPU
-    failIfMajorPerformanceCaveat: false, // Allow software fallback
+    antialias: !isMobile,  // Disable antialias on mobile
+    powerPreference: isMobile ? 'default' : 'high-performance',
+    failIfMajorPerformanceCaveat: false,
+    alpha: false,  // No transparency for better performance
+    stencil: false,  // Disable stencil buffer
+    depth: true,
+    premultipliedAlpha: false,
   });
   
   renderer.setSize(sizes.width, sizes.height);
   renderer.setPixelRatio(pixelRatio);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
-  renderer.info.autoReset = false; // Keep render info between frames
+  renderer.info.autoReset = false;
+  
+  // Mobile optimizations
+  if (isMobile) {
+    renderer.shadowMap.enabled = false;  // Disable shadows on mobile
+    renderer.physicallyCorrectLights = false;  // Simpler lighting
+  }
   
   return { renderer, pixelRatio };
 }
@@ -98,14 +110,6 @@ export function createPostProcessingSetup() {
   return { scenePost, cameraPost, quadGeometry };
 }
 
-/**
- * Mobile detection utility
- */
-export function isMobileDevice(): boolean {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent
-  );
-}
 
 /**
  * Container size helper
@@ -124,10 +128,10 @@ export function getContainerSizes(container: HTMLDivElement): {width: number; he
  */
 export function createSceneSetup(container: HTMLDivElement) {
   const sizes = getContainerSizes(container);
-  const isMobile = isMobileDevice();
+  const isMobileDevice = isMobile();
   const scene = createScene();
-  const camera = createCamera(sizes, isMobile);
-  const { renderer, pixelRatio } = createRenderer(sizes);
+  const camera = createCamera(sizes, isMobileDevice);
+  const { renderer, pixelRatio } = createRenderer(sizes, isMobileDevice);
   
   container.appendChild(renderer.domElement);
   
@@ -137,6 +141,6 @@ export function createSceneSetup(container: HTMLDivElement) {
     renderer,
     sizes,
     pixelRatio,
-    isMobile
+    isMobile: isMobileDevice
   };
 }

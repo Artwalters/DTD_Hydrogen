@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {COLORS, HDRI_ROTATION} from '../constants';
+import {COLORS} from '../constants';
 
 /**
  * Scene Lighting Component
@@ -50,30 +50,6 @@ export class SceneLighting {
     Object.values(this.lights).forEach(light => scene.add(light));
   }
 
-  /**
-   * Setup HDRI environment lighting
-   * 
-   * @param texture - HDRI environment texture
-   * @param scene - Three.js scene
-   */
-  setupHDRI(texture: THREE.Texture, scene: THREE.Scene): void {
-    // Apply HDRI rotation
-    const euler = new THREE.Euler(
-      THREE.MathUtils.degToRad(HDRI_ROTATION.vertical),
-      THREE.MathUtils.degToRad(HDRI_ROTATION.horizontal),
-      0
-    );
-    texture.mapping = THREE.EquirectangularReflectionMapping;
-    
-    // Rotate the environment
-    const matrix = new THREE.Matrix4().makeRotationFromEuler(euler);
-    texture.matrix = matrix;
-    texture.needsUpdate = true;
-
-    // Set as scene environment
-    scene.environment = texture;
-    scene.background = texture;
-  }
 
   /**
    * Update light intensities
@@ -96,16 +72,6 @@ export class SceneLighting {
     if (config.frontRight !== undefined) {
       this.lights.frontRight.intensity = config.frontRight;
     }
-  }
-
-  /**
-   * Animate lights (bijvoorbeeld voor dynamische scenes)
-   * 
-   * @param time - Elapsed time in seconden
-   */
-  animate(time: number): void {
-    // Subtle light animation kan hier toegevoegd worden
-    // Bijvoorbeeld: this.lights.main.intensity = 5 + Math.sin(time) * 0.5;
   }
 
   /**

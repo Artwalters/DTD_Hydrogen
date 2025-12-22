@@ -29,12 +29,12 @@ export const createGodrayFragmentShader = (config: {
   contrast?: number;
 } = {}) => {
   const {
-    samples = 8, // Aantal samples voor kwaliteit
-    exposure = 0.15, // Sterker godray effect
+    samples = 6, // Reduced from 8 for performance
+    exposure = 0.12, // Slightly reduced
     decay = 0.92, // Hoe snel het effect afneemt
-    density = 0.7, // Meer spreiding
-    weight = 0.6, // Hogere intensiteit
-    brightness = 1.2, // Helderder
+    density = 0.6, // Reduced density
+    weight = 0.5, // Reduced weight
+    brightness = 1.15, // Slightly reduced
     contrast = 0.95 // Gamma correctie
   } = config;
 

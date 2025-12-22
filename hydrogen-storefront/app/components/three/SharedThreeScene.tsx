@@ -9,9 +9,10 @@ import {
   HDRI_ROTATION_FOOTER,
   SMOKE_CONFIG,
   MODEL_CONFIG,
+  PERFORMANCE,
 } from './constants';
 import {createSceneSetup} from './utils/SceneSetup';
-import {throttle} from './utils/Performance';
+import {throttle, setupContextLossHandling, setupVisibilityHandling, setupResizeHandler} from './utils/Performance';
 import {TextureCache} from './utils/TextureLoaders';
 import {ModelInteraction} from './utils/ModelInteraction';
 import {AnimationLoop} from './utils/AnimationLoop';
@@ -45,11 +46,14 @@ export function SharedThreeScene({
     let model: THREE.Group | null = null;
     let mixer: THREE.AnimationMixer | null = null;
 
-    // Mouse tracking - only when mouse is within container bounds
+    // Scene setup (get isMobile first)
+    const {scene, camera, renderer, sizes, pixelRatio, isMobile} = createSceneSetup(container);
+
+    // Mouse tracking - only when mouse is within container bounds (disabled on mobile)
     const mouse = {x: 0, y: 0};
     let isMouseInContainer = false;
     
-    const handleMouseMove = throttle((event: MouseEvent) => {
+    const handleMouseMove = !isMobile ? throttle((event: MouseEvent) => {
       const rect = container.getBoundingClientRect();
       
       // Check if mouse is within container bounds
@@ -64,12 +68,11 @@ export function SharedThreeScene({
         mouse.x *= 0.95;
         mouse.y *= 0.95;
       }
-    }, 16); // ~60fps max
+    }, 16) : () => {}; // No-op function for mobile
     
-    window.addEventListener('mousemove', handleMouseMove);
-
-    // Scene setup
-    const {scene, camera, renderer, sizes, pixelRatio} = createSceneSetup(container);
+    if (!isMobile) {
+      window.addEventListener('mousemove', handleMouseMove);
+    }
 
     // Footer krijgt aangepaste HDRI intensity
     if (type === 'footer') {
@@ -78,45 +81,44 @@ export function SharedThreeScene({
 
     // Context loss handling
     let contextLost = false;
-    const handleContextLost = (event: Event) => {
-      event.preventDefault();
-      contextLost = true;
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-      console.warn('WebGL context lost - animation paused');
-    };
-    const handleContextRestored = () => {
-      contextLost = false;
-      console.log('WebGL context restored - resuming animation');
-      if (isPageVisible) animate();
-    };
-    renderer.domElement.addEventListener('webglcontextlost', handleContextLost);
-    renderer.domElement.addEventListener('webglcontextrestored', handleContextRestored);
+    const cleanupContextLoss = setupContextLossHandling(
+      renderer,
+      () => { 
+        contextLost = true;
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      },
+      () => { 
+        contextLost = false;
+        if (isPageVisible) animate();
+      }
+    );
 
     // Visibility optimization
     let isPageVisible = true;
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
+    const cleanupVisibility = setupVisibilityHandling(
+      () => {
         isPageVisible = false;
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
-        console.log(`🛑 ${type}Scene: Tab hidden - rendering paused`);
-      } else {
+      },
+      () => {
         isPageVisible = true;
         if (!contextLost) animate();
-        console.log(`▶️ ${type}Scene: Tab visible - rendering resumed`);
       }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    );
 
     // Initialize effects and systems
     const textureCache = new TextureCache();
-    const smokeEffect = new SmokeEffect(scene, textureCache);
-    const iceTrailEffect = new IceTrailEffect(textureCache);
+    // Mobile-optimized smoke effect
+    const smokeOptions = isMobile ? { count: PERFORMANCE.mobile.smokeCount } : {};
+    const smokeEffect = new SmokeEffect(scene, textureCache, smokeOptions);
+    const iceTrailEffect = !isMobile ? new IceTrailEffect(textureCache) : null;
     // Footer: subtiele verlichting rondom het model
     const lightingConfig = type === 'footer'
       ? { ambientIntensity: 0.3, mainLightIntensity: 0.4, frontLightIntensity: 0.2 }
       : {};
     const sceneLighting = new SceneLighting(scene, lightingConfig);
-    const godrayPostProcessing = new GodrayPostProcessing(sizes, pixelRatio);
+    // Disable post-processing on mobile for performance
+    const godrayPostProcessing = !isMobile ? new GodrayPostProcessing(sizes, pixelRatio) : null;
     const modelInteraction = new ModelInteraction();
     const animationLoop = new AnimationLoop();
 
@@ -162,14 +164,18 @@ export function SharedThreeScene({
           material.metalness = 1.0;
           material.roughness = 1.0;
 
-          // Inject ice effect
-          iceTrailEffect.injectIceShader(material, iceTextures);
+          // Inject ice effect (only on desktop)
+          if (!isMobile && iceTrailEffect) {
+            iceTrailEffect.injectIceShader(material, iceTextures);
+          }
           material.needsUpdate = true;
         }
       });
 
       scene.add(model);
-      iceTrailEffect.calculateBoundingSphere(model);
+      if (!isMobile && iceTrailEffect) {
+        iceTrailEffect.calculateBoundingSphere(model);
+      }
 
       // Setup animation mixer
       if (gltf.animations && gltf.animations.length > 0) {
@@ -182,28 +188,41 @@ export function SharedThreeScene({
     });
 
     // Resize handler
-    let resizeTimeout: ReturnType<typeof setTimeout>;
-    const handleResize = () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        sizes.width = container.clientWidth;
-        sizes.height = container.clientHeight;
+    const cleanupResize = setupResizeHandler(() => {
+      sizes.width = container.clientWidth;
+      sizes.height = container.clientHeight;
 
-        camera.aspect = sizes.width / sizes.height;
-        camera.updateProjectionMatrix();
+      camera.aspect = sizes.width / sizes.height;
+      camera.updateProjectionMatrix();
 
-        renderer.setSize(sizes.width, sizes.height);
-        const newPixelRatio = Math.min(window.devicePixelRatio, 2);
-        renderer.setPixelRatio(newPixelRatio);
+      renderer.setSize(sizes.width, sizes.height);
+      const newPixelRatio = Math.min(window.devicePixelRatio, isMobile ? PERFORMANCE.mobile.maxPixelRatio : PERFORMANCE.maxPixelRatio);
+      renderer.setPixelRatio(newPixelRatio);
 
+      if (godrayPostProcessing) {
         godrayPostProcessing.resize(sizes.width, sizes.height, newPixelRatio);
-      }, 100);
+      }
+    }, 100);
+
+    // Check if element is in viewport
+    let isInViewport = false;
+    const checkViewport = () => {
+      const rect = container.getBoundingClientRect();
+      isInViewport = (
+        rect.bottom >= 0 &&
+        rect.top <= window.innerHeight &&
+        rect.right >= 0 &&
+        rect.left <= window.innerWidth
+      );
     };
-    window.addEventListener('resize', handleResize);
 
     // Animation loop
     const animate = () => {
       if (contextLost || !isPageVisible) return;
+
+      // Check if scene is visible
+      checkViewport();
+      if (!isInViewport) return;
 
       // Update animation timing
       const { deltaTime, elapsedTime, shouldSkipFrame } = animationLoop.update();
@@ -218,24 +237,30 @@ export function SharedThreeScene({
       // Get scroll state for performance optimization
       const { isScrolling } = getScrollState();
 
-      // Mouse interaction with model (throttled during scroll)
-      if (model) {
+      // Mouse interaction with model (only on desktop)
+      if (model && !isMobile) {
         // Skip model interaction during scroll for performance
         if (!isScrolling) {
           modelInteraction.updateModelInteraction(model, mouse, elapsedTime, deltaTime);
         }
 
         // Handle ice trail effect with scroll-aware optimization
-        const intersects = !isScrolling ? 
-          modelInteraction.performRaycasting(mouse, camera, model) : [];
-        iceTrailEffect.update(deltaTime, elapsedTime, intersects, isScrolling);
+        if (iceTrailEffect) {
+          const intersects = !isScrolling ? 
+            modelInteraction.performRaycasting(mouse, camera, model) : [];
+          iceTrailEffect.update(deltaTime, elapsedTime, intersects, isScrolling);
+        }
       }
 
       // Update effects
       smokeEffect.update(elapsedTime);
 
-      // Render with post-processing
-      godrayPostProcessing.render(renderer, scene, camera, elapsedTime);
+      // Render with post-processing (mobile renders directly)
+      if (godrayPostProcessing) {
+        godrayPostProcessing.render(renderer, scene, camera, elapsedTime);
+      } else {
+        renderer.render(scene, camera);
+      }
     };
 
     // Register with Lenis
@@ -245,18 +270,25 @@ export function SharedThreeScene({
     return () => {
       removeThreeJsCallback(animate);
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
-      clearTimeout(resizeTimeout);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('resize', handleResize);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
-      renderer.domElement.removeEventListener('webglcontextrestored', handleContextRestored);
+      
+      // Cleanup event handlers
+      cleanupResize();
+      cleanupVisibility();
+      cleanupContextLoss();
+      
+      if (!isMobile) {
+        window.removeEventListener('mousemove', handleMouseMove);
+      }
 
       // Dispose resources
       renderer.dispose();
-      godrayPostProcessing.dispose();
+      if (godrayPostProcessing) {
+        godrayPostProcessing.dispose();
+      }
       smokeEffect.dispose();
-      iceTrailEffect.dispose();
+      if (iceTrailEffect) {
+        iceTrailEffect.dispose();
+      }
       textureCache.dispose();
       modelInteraction.dispose();
       animationLoop.dispose();

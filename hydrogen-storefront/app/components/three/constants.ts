@@ -18,10 +18,17 @@ export const HDRI_ROTATION_FOOTER = {
 
 // Performance Settings
 export const PERFORMANCE = {
-  maxPixelRatio: 2,
-  renderTargetSamples: 4,
+  maxPixelRatio: 1.5,  // Reduced from 2
+  renderTargetSamples: 2,  // Reduced from 4
   defaultFPS: 60,
   throttledFPS: 30,
+  mobile: {
+    maxPixelRatio: 1.0,  // Lower resolution for mobile
+    renderTargetSamples: 0,  // No anti-aliasing on mobile
+    targetFPS: 30,  // Lower FPS for mobile
+    smokeCount: 100,  // Fewer particles on mobile
+    enablePostProcessing: false,  // Disable post-processing on mobile
+  }
 } as const;
 
 // Scene Colors
@@ -38,13 +45,13 @@ export const COLORS = {
 
 // Smoke Effect Settings  
 export const SMOKE_CONFIG = {
-  count: 400,
+  count: 200,  // Reduced from 400 (50% reduction)
   geometry: {
     width: 8,
     height: 8
   },
   material: {
-    baseAlpha: 0.12,
+    baseAlpha: 0.15,  // Slightly increased to compensate for fewer particles
     blending: 'additive' as const
   },
   distribution: {
@@ -90,20 +97,12 @@ export const MODEL_CONFIG = {
     scale: [3.51, 3.51, 3.51] as [number, number, number],
     position: [0, 0, 0] as [number, number, number],
     rotation: [0, 0, 0] as [number, number, number],
-    floatSpeed: 0.3,
-    floatAmplitude: 0.05,
-    mouseFollowSpeed: 0.015,
-    mouseFollowRange: 0.4
   },
   footer: {
     path: '/assets/Daretodream_full.glb',
     scale: [5.625, 5.625, 5.625] as [number, number, number],
     position: [5, 0, 0] as [number, number, number],
     rotation: [0, Math.PI, 0] as [number, number, number],
-    floatSpeed: 0.3,
-    floatAmplitude: 0.05,
-    mouseFollowSpeed: 0.015,
-    mouseFollowRange: 0.4
   }
 } as const;
 
